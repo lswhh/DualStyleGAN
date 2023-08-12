@@ -1,4 +1,5 @@
 import os
+import base64
 from flask import Flask, request, redirect, render_template, send_from_directory
 from werkzeug.utils import secure_filename
 from cartoonize import cartoonize
