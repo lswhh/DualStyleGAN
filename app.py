@@ -28,8 +28,9 @@ def handle_cartoonize():
 
 @app.route("/")
 def index():
-    images = os.listdir('./images')
-    return render_template("index.html", images=images)
+    # images = os.listdir('./images')
+    # return render_template("index.html", images=images)
+    return "hello DualStyleGAN"
 
 def allowed_file(filename):
     return '.' in filename and \
