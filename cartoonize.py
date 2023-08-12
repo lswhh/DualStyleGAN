@@ -185,8 +185,10 @@ def cartoonize(content_image, style='cartoon', style_id=53, weight=None,
     encoder.eval()
     encoder.to(device)
     
-    exstyles = np.load(os.path.join(model_path, style, 'exstyle_code.npy'), allow_pickle=True).item()
+    exstyles = np.load(os.path.join(os.path.dirname(model_path), style, 'exstyle_code.npy'), allow_pickle=True).item()
 
+    print('Load models successfully!')
+    
     with torch.no_grad():
         I = transform(content_image).unsqueeze(dim=0).to(device)
         img_rec, instyle = encoder(F.adaptive_avg_pool2d(I, 256), randomize_noise=False, return_latents=True,
