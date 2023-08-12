@@ -158,7 +158,7 @@ if __name__ == "__main__":
 
 
 
-def init_cartoonize(model_path, generator_name, encoder_name):
+def init_cartoonize(model_path, style, generator_name, encoder_name):
     global g_ema, psp, transform, is_initialized
 
     if is_initialized:
@@ -167,7 +167,7 @@ def init_cartoonize(model_path, generator_name, encoder_name):
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
     # generator 모델 로드
-    gen_ckpt = torch.load(os.path.join(model_path, generator_name), map_location=device)
+    gen_ckpt = torch.load(os.path.join(model_path, style, generator_name), map_location=device)
     if "g_ema" in gen_ckpt:
         g_ema = gen_ckpt["g_ema"]
     else:
@@ -187,14 +187,9 @@ def init_cartoonize(model_path, generator_name, encoder_name):
     # 초기화 상태 변경
     is_initialized = True
     
-def cartoonize(content_image: Image.Image) -> Image.Image:
+def cartoonize(content_image: Image.Image, style: str = "cartoon") -> Image.Image:
     global g_ema, psp, transform
 
-    if not is_initialized:
-        init_cartoonize(model_path="./checkpoint/",
-                        generator_name="generator.pt",
-                        encoder_name="psp.pt")
-    
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
     args = Namespace(
@@ -209,16 +204,14 @@ def cartoonize(content_image: Image.Image) -> Image.Image:
         data_path="./data/",
         wplus=False,
     )
-    content_image_tensor = transform(content_image).unsqueeze(0).to(device)
-
-    ckpt = torch.load(os.path.join(args.model_path, args.model_name), map_location=device)
-    if "g_ema" in ckpt:
-        g_ema = ckpt["g_ema"]
-    else:
-        g_ema = DualStyleGAN.from_layers(ckpt[0], ckpt[1], ckpt[2], ckpt[3], ckpt[4])
-    g_ema.to(device).eval()
     
-    psp = pSp(encoder_torch_path=os.path.join(args.model_path, args.encoder_name)).to(device).eval()
+    if not is_initialized:
+        init_cartoonize(model_path="./checkpoint/",
+                        style=style,
+                        generator_name="generator.pt",
+                        encoder_name="psp.pt")
+        
+    content_image_tensor = transform(content_image).unsqueeze(0).to(device)
 
     instyle = torch.randn(content_image_tensor.size(0), g_ema.style_dim).to(device)
     residual = (content_image_tensor - g_ema.style_space).sum(2).sum(2) / (content_image_tensor.size(2) * content_image_tensor.size(3))
