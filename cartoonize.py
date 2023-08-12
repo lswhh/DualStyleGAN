@@ -10,6 +10,9 @@ import torchvision
 from model.dualstylegan import DualStyleGAN
 from model.encoder.psp import pSp
 
+global g_ema, psp, transform
+is_initialized = False
+
 class TestOptions():
     def __init__(self):
 
@@ -151,8 +154,7 @@ if __name__ == "__main__":
     print('Save images successfully!')
 
 
-global g_ema, psp, transform
-is_initialized = False
+
 
 def init_cartoonize(model_path, generator_name, encoder_name):
     global g_ema, psp, transform, is_initialized
