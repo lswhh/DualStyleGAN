@@ -205,7 +205,8 @@ def cartoonize(content_image):
             I = transform(run_alignment(args)).unsqueeze(dim=0).to(device)
             I = F.adaptive_avg_pool2d(I, 1024)
         else:
-            I = load_image(args.content).to(device)
+            # I = load_image(args.content).to(device)
+            I = transform(input_pil_image).to(device).unsqueeze(dim=0)
         viz += [I]
 
         # reconstructed content image and its intrinsic style code
