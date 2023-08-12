@@ -58,7 +58,8 @@ def run_alignment(args):
 
 
 if __name__ == "__main__":
-    device = "cuda"
+    #device = "cuda"
+    device = "cpu"
 
     parser = TestOptions()
     args = parser.parse()
