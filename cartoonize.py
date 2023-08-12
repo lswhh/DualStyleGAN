@@ -156,94 +156,142 @@ if __name__ == "__main__":
     print('Save images successfully!')
 
 
-
-
-def init_cartoonize(model_path, style, generator_name, encoder_name):
-    global g_ema, psp, transform, is_initialized
-
-    if is_initialized:
-        return
-
+def cartoonize(content_image, style='cartoon', style_id=53, weight=None,
+               preserve_color=False, model_path='./checkpoint/', model_name='generator.pt'):
+    if weight is None:
+        weight = [0.75] * 7 + [1] * 11
     device = "cuda" if torch.cuda.is_available() else "cpu"
-
-    # generator 모델 로드
-    gen_ckpt = torch.load(os.path.join(model_path, style, generator_name), map_location=device)
-    if "g_ema" in gen_ckpt:
-        g_ema = gen_ckpt["g_ema"]
-    else:
-        g_ema = DualStyleGAN.from_layers(gen_ckpt[0], gen_ckpt[1], gen_ckpt[2], gen_ckpt[3], gen_ckpt[4])
-
-    g_ema.to(device).eval()
-
-    # encoder 모델 로드
-    psp = pSp(encoder_torch_path=os.path.join(model_path, encoder_name)).to(device).eval()
-
-    # 이미지 변환 설정
+    
     transform = transforms.Compose([
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
     ])
-
-    # 초기화 상태 변경
-    is_initialized = True
     
-def cartoonize(content_image: Image.Image, style: str = "cartoon") -> Image.Image:
-    global g_ema, psp, transform
-
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-
-    args = Namespace(
-        content=content_image,
-        style="cartoon",
-        style_id=53,
-        truncation=0.75,
-        weight=[0.75] * 7 + [1] * 11,
-        preserve_color=True,
-        model_path="./checkpoint/",
-        model_name="generator.pt",
-        data_path="./data/",
-        wplus=False,
-    )
+    generator = DualStyleGAN(1024, 512, 8, 2, res_index=6)
+    generator.eval()
     
-    if not is_initialized:
-        init_cartoonize(model_path="./checkpoint/",
-                        style=style,
-                        generator_name="generator.pt",
-                        encoder_name="psp.pt")
-        
-    content_image_tensor = transform(content_image).unsqueeze(0).to(device)
-
-    instyle = torch.randn(content_image_tensor.size(0), g_ema.style_dim).to(device)
-    residual = (content_image_tensor - g_ema.style_space).sum(2).sum(2) / (content_image_tensor.size(2) * content_image_tensor.size(3))
-    instyle[:, :7] = residual.detach()
+    ckpt = torch.load(os.path.join(model_path, style, model_name), map_location=device)
+    generator.load_state_dict(ckpt["g_ema"])
+    generator = generator.to(device)
+    
+    model_path = os.path.join(model_path, 'encoder.pt')
+    ckpt = torch.load(model_path, map_location=device)
+    opts = ckpt['opts']
+    opts['checkpoint_path'] = model_path
+    opts['device'] = device
+    opts = Namespace(**opts)
+    opts.output_size = 1024
+    encoder = pSp(opts)
+    encoder.eval()
+    encoder.to(device)
+    
+    exstyles = np.load(os.path.join(model_path, style, 'exstyle_code.npy'), allow_pickle=True).item()
 
     with torch.no_grad():
-        z_inter = psp(content_image_tensor)
-        exstyle, _ = g_ema.mapping(z_inter, None, truncation_cutoff=-1)
+        I = transform(content_image).unsqueeze(dim=0).to(device)
+        img_rec, instyle = encoder(F.adaptive_avg_pool2d(I, 256), randomize_noise=False, return_latents=True,
+                                   resize=False)
 
-    if args.preserve_color and not args.wplus:
-        exstyle[:,7:18] = instyle[:,7:18]
+        latent = torch.tensor(exstyles[list(exstyles.keys())[style_id]]).to(device)
+        if preserve_color:
+            latent[:, 7:18] = instyle[:, 7:18]
 
-    exstyle = exstyle.cpu().numpy()
-    scaleY = exstyle[:, 7:18]
-    scaleY = scaleY ** 2
-    scaleY = scaleY + 1
-    scaleY = scaleY / 2
-    scaleY = scaleY * 255
-    scaleY = scaleY.round()
-    scaleY = scaleY.astype(int)
-    for i, m in enumerate(scaleY):
-        scaleX = np.asarray([53] * 11)
-        _, x = torchmeshgrid(torch.as_tensor(x).float(), torch.as_tensor(m).float(), device)
-        x = x / 63
-        x = 2 * x - 1
-        x = torch.as_tensor(x).float().to(device)
-        exstyle[i, 7:18] = x
+        img_gen, _ = generator([instyle], latent, truncation=0.75, truncation_latent=0, use_res=True,
+                               interp_weights=weight)
+        img_gen = torch.clamp(img_gen.detach(), -1, 1)
+        
+    result_image = img_gen[0].cpu().permute(1, 2, 0).numpy()
+    result_image = ((result_image + 1) * 127.5).astype(np.uint8)
+    result_image = Image.fromarray(result_image)
 
-    exstyle = torch.tensor(exstyle).float().to(device)
+    return result_image
 
-    img_gen = g_ema.generate(content_image_tensor, exstyle, step=options.step, alpha=options.alpha,
-                                  noise=None, mix_styles=options.wplus)
+# def init_cartoonize(model_path, style, generator_name, encoder_name):
+#     global g_ema, psp, transform, is_initialized
+
+#     if is_initialized:
+#         return
+
+#     device = "cuda" if torch.cuda.is_available() else "cpu"
+
+#     # generator 모델 로드
+#     gen_ckpt = torch.load(os.path.join(model_path, style, generator_name), map_location=device)
+#     if "g_ema" in gen_ckpt:
+#         g_ema = gen_ckpt["g_ema"]
+#     else:
+#         g_ema = DualStyleGAN.from_layers(gen_ckpt[0], gen_ckpt[1], gen_ckpt[2], gen_ckpt[3], gen_ckpt[4])
+
+#     g_ema.to(device).eval()
+
+#     # encoder 모델 로드
+#     psp = pSp(encoder_torch_path=os.path.join(model_path, encoder_name)).to(device).eval()
+
+#     # 이미지 변환 설정
+#     transform = transforms.Compose([
+#         transforms.ToTensor(),
+#         transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
+#     ])
+
+#     # 초기화 상태 변경
+#     is_initialized = True
     
-    img_gen_pil = Image.fromarray(np.uint8((img_gen.squeeze().numpy() + 1) / 2 * 255)).convert("RGB")
-    return img_gen_pil
+# def cartoonize(content_image: Image.Image, style: str = "cartoon") -> Image.Image:
+#     global g_ema, psp, transform
+
+#     device = "cuda" if torch.cuda.is_available() else "cpu"
+
+#     args = Namespace(
+#         content=content_image,
+#         style="cartoon",
+#         style_id=53,
+#         truncation=0.75,
+#         weight=[0.75] * 7 + [1] * 11,
+#         preserve_color=True,
+#         model_path="./checkpoint/",
+#         model_name="generator.pt",
+#         data_path="./data/",
+#         wplus=False,
+#     )
+    
+#     if not is_initialized:
+#         init_cartoonize(model_path="./checkpoint/",
+#                         style=style,
+#                         generator_name="generator.pt",
+#                         encoder_name="psp.pt")
+        
+#     content_image_tensor = transform(content_image).unsqueeze(0).to(device)
+
+#     instyle = torch.randn(content_image_tensor.size(0), g_ema.style_dim).to(device)
+#     residual = (content_image_tensor - g_ema.style_space).sum(2).sum(2) / (content_image_tensor.size(2) * content_image_tensor.size(3))
+#     instyle[:, :7] = residual.detach()
+
+#     with torch.no_grad():
+#         z_inter = psp(content_image_tensor)
+#         exstyle, _ = g_ema.mapping(z_inter, None, truncation_cutoff=-1)
+
+#     if args.preserve_color and not args.wplus:
+#         exstyle[:,7:18] = instyle[:,7:18]
+
+#     exstyle = exstyle.cpu().numpy()
+#     scaleY = exstyle[:, 7:18]
+#     scaleY = scaleY ** 2
+#     scaleY = scaleY + 1
+#     scaleY = scaleY / 2
+#     scaleY = scaleY * 255
+#     scaleY = scaleY.round()
+#     scaleY = scaleY.astype(int)
+#     for i, m in enumerate(scaleY):
+#         scaleX = np.asarray([53] * 11)
+#         _, x = torchmeshgrid(torch.as_tensor(x).float(), torch.as_tensor(m).float(), device)
+#         x = x / 63
+#         x = 2 * x - 1
+#         x = torch.as_tensor(x).float().to(device)
+#         exstyle[i, 7:18] = x
+
+#     exstyle = torch.tensor(exstyle).float().to(device)
+
+#     img_gen = g_ema.generate(content_image_tensor, exstyle, step=options.step, alpha=options.alpha,
+#                                   noise=None, mix_styles=options.wplus)
+    
+#     img_gen_pil = Image.fromarray(np.uint8((img_gen.squeeze().numpy() + 1) / 2 * 255)).convert("RGB")
+#     return img_gen_pil
