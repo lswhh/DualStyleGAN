@@ -187,9 +187,9 @@ def cartoonize(content_image: Image.Image) -> Image.Image:
     global g_ema, psp, transform
 
     if not is_initialized:
-    init_cartoonize(model_path="./checkpoint/",
-                    generator_name="generator.pt",
-                    encoder_name="psp.pt")
+        init_cartoonize(model_path="./checkpoint/",
+                        generator_name="generator.pt",
+                        encoder_name="psp.pt")
     
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
