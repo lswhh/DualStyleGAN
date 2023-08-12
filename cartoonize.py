@@ -206,7 +206,12 @@ def cartoonize(content_image):
             I = F.adaptive_avg_pool2d(I, 1024)
         else:
             # I = load_image(args.content).to(device)
-            I = transform(content_image).to(device).unsqueeze(dim=0)
+            transformf = transforms.Compose([
+                        lambda img: img.convert('RGB'),   # 알파 채널이 있는 경우 제거
+                        transforms.ToTensor(),
+                        transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
+                    ])
+            I = transformf(content_image).to(device).unsqueeze(dim=0)
         viz += [I]
 
         # reconstructed content image and its intrinsic style code
