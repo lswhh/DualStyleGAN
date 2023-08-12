@@ -9,6 +9,8 @@ from torch.nn import functional as F
 import torchvision
 from model.dualstylegan import DualStyleGAN
 from model.encoder.psp import pSp
+from PIL import Image
+
 
 global g_ema, psp, transform
 is_initialized = False
