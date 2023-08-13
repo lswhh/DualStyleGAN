@@ -14,14 +14,14 @@ APP_ROOT = os.path.dirname(os.path.abspath(__file__))
 
 ALLOWED_EXTENSIONS = set(['png', 'jpg', 'jpeg', 'gif'])
 
-@app.route('/cartoonize', methods=['POST'])
+@app.route('/cartoonizeBase64', methods=['POST'])
 def handle_cartoonize():
     data = request.json
     image_data = data['image'].split(',')[1]  # 콤마 다음부터 Base64 문자열이 시작됩니다.
     img_bytes = base64.b64decode(image_data)  # 이미지 데이터를 바이트로 바꿉니다.
     img_pil = Image.open(BytesIO(img_bytes))  # PIL 이미지 포맷으로 변환합니다.
 
-    cartoonized_img_pil = cartoonize(img_pil)  # 여기에서 cartoonize 함수를 호출합니다.
+    cartoonized_img_pil = cartoonizePIL(img_pil)  # 여기에서 cartoonize 함수를 호출합니다.
 
     # 결과 이미지를 다시 Base64로 인코딩해서 클라이언트에 리턴합니다.
     buffered = BytesIO()
@@ -30,6 +30,25 @@ def handle_cartoonize():
 
     return jsonify(cartoonized_image='data:image/png;base64,' + img_str)
 
+@app.route('/cartoonize', methods=['POST'])
+def handle_photo2cartoon():
+    try:
+        image = request.files["image"]
+
+        cartoonized_img_pil = cartoonize(image)
+
+        img_byte_arr = io.BytesIO()
+        cartoonized_img_pil.save(img_byte_arr, format="JPEG")
+        img_byte_arr.seek(0)
+        response = make_response(img_byte_arr.getvalue())
+        response.headers.set('Content-Type', 'image/jpeg')  # 이미지 포맷에 맞게 변경
+
+        return response
+    except Exception as e:
+        print("Exception occurred:", e)  # 추가
+        error_message = str(e).replace('<', '&lt;').replace('>', '&gt;')
+        return error_message, 400
+    
 @app.route("/")
 def index():
     # images = os.listdir('./images')

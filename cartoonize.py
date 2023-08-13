@@ -155,8 +155,7 @@ if __name__ == "__main__":
 
     print('Save images successfully!')
 
-
-def cartoonize(content_image):
+def cartoonizePIL(content_image):
     device = "cpu"
 
     parser = TestOptions()
@@ -254,92 +253,98 @@ def cartoonize(content_image):
     return img_gen_pil
 
 
-# def init_cartoonize(model_path, style, generator_name, encoder_name):
-#     global g_ema, psp, transform, is_initialized
 
-#     if is_initialized:
-#         return
+def cartoonize(content_image):
+    device = "cpu"
 
-#     device = "cuda" if torch.cuda.is_available() else "cpu"
-
-#     # generator 모델 로드
-#     gen_ckpt = torch.load(os.path.join(model_path, style, generator_name), map_location=device)
-#     if "g_ema" in gen_ckpt:
-#         g_ema = gen_ckpt["g_ema"]
-#     else:
-#         g_ema = DualStyleGAN.from_layers(gen_ckpt[0], gen_ckpt[1], gen_ckpt[2], gen_ckpt[3], gen_ckpt[4])
-
-#     g_ema.to(device).eval()
-
-#     # encoder 모델 로드
-#     psp = pSp(encoder_torch_path=os.path.join(model_path, encoder_name)).to(device).eval()
-
-#     # 이미지 변환 설정
-#     transform = transforms.Compose([
-#         transforms.ToTensor(),
-#         transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
-#     ])
-
-#     # 초기화 상태 변경
-#     is_initialized = True
+    parser = TestOptions()
+    args = parser.parse()
+    print('*'*98)
     
-# def cartoonize(content_image: Image.Image, style: str = "cartoon") -> Image.Image:
-#     global g_ema, psp, transform
-
-#     device = "cuda" if torch.cuda.is_available() else "cpu"
-
-#     args = Namespace(
-#         content=content_image,
-#         style="cartoon",
-#         style_id=53,
-#         truncation=0.75,
-#         weight=[0.75] * 7 + [1] * 11,
-#         preserve_color=True,
-#         model_path="./checkpoint/",
-#         model_name="generator.pt",
-#         data_path="./data/",
-#         wplus=False,
-#     )
+    transform = transforms.Compose([
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[0.5, 0.5, 0.5],std=[0.5,0.5,0.5]),
+    ])
     
-#     if not is_initialized:
-#         init_cartoonize(model_path="./checkpoint/",
-#                         style=style,
-#                         generator_name="generator.pt",
-#                         encoder_name="psp.pt")
-        
-#     content_image_tensor = transform(content_image).unsqueeze(0).to(device)
+    generator = DualStyleGAN(1024, 512, 8, 2, res_index=6)
+    generator.eval()
 
-#     instyle = torch.randn(content_image_tensor.size(0), g_ema.style_dim).to(device)
-#     residual = (content_image_tensor - g_ema.style_space).sum(2).sum(2) / (content_image_tensor.size(2) * content_image_tensor.size(3))
-#     instyle[:, :7] = residual.detach()
-
-#     with torch.no_grad():
-#         z_inter = psp(content_image_tensor)
-#         exstyle, _ = g_ema.mapping(z_inter, None, truncation_cutoff=-1)
-
-#     if args.preserve_color and not args.wplus:
-#         exstyle[:,7:18] = instyle[:,7:18]
-
-#     exstyle = exstyle.cpu().numpy()
-#     scaleY = exstyle[:, 7:18]
-#     scaleY = scaleY ** 2
-#     scaleY = scaleY + 1
-#     scaleY = scaleY / 2
-#     scaleY = scaleY * 255
-#     scaleY = scaleY.round()
-#     scaleY = scaleY.astype(int)
-#     for i, m in enumerate(scaleY):
-#         scaleX = np.asarray([53] * 11)
-#         _, x = torchmeshgrid(torch.as_tensor(x).float(), torch.as_tensor(m).float(), device)
-#         x = x / 63
-#         x = 2 * x - 1
-#         x = torch.as_tensor(x).float().to(device)
-#         exstyle[i, 7:18] = x
-
-#     exstyle = torch.tensor(exstyle).float().to(device)
-
-#     img_gen = g_ema.generate(content_image_tensor, exstyle, step=options.step, alpha=options.alpha,
-#                                   noise=None, mix_styles=options.wplus)
+    ckpt = torch.load(os.path.join(args.model_path, args.style, args.model_name), map_location=lambda storage, loc: storage)
+    generator.load_state_dict(ckpt["g_ema"])
+    generator = generator.to(device)
     
-#     img_gen_pil = Image.fromarray(np.uint8((img_gen.squeeze().numpy() + 1) / 2 * 255)).convert("RGB")
-#     return img_gen_pil
+    if args.wplus:
+        model_path = os.path.join(args.model_path, 'encoder_wplus.pt')
+    else:
+        model_path = os.path.join(args.model_path, 'encoder.pt')
+    ckpt = torch.load(model_path, map_location='cpu')
+    opts = ckpt['opts']
+    opts['checkpoint_path'] = model_path
+    if 'output_size' not in opts:
+        opts['output_size'] = 1024    
+    opts = Namespace(**opts)
+    opts.device = device
+    encoder = pSp(opts)
+    encoder.eval()
+    encoder.to(device)
+
+    exstyles = np.load(os.path.join(args.model_path, args.style, args.exstyle_name), allow_pickle='TRUE').item()
+
+    z_plus_latent=not args.wplus
+    return_z_plus_latent=not args.wplus
+    input_is_latent=args.wplus    
+    
+    print('Load models successfully!')
+    
+    with torch.no_grad():
+        viz = []
+        # load content image
+        if args.align_face:
+            I = transform(run_alignment(args)).unsqueeze(dim=0).to(device)
+            I = F.adaptive_avg_pool2d(I, 1024)
+        else:
+            # I = load_image(args.content).to(device)
+            # I = transformf(content_image).to(device).unsqueeze(dim=0)
+            I = transform(content_image).unsqueeze(dim=0).to(device)
+        viz += [I]
+
+        # reconstructed content image and its intrinsic style code
+        img_rec, instyle = encoder(F.adaptive_avg_pool2d(I, 256), randomize_noise=False, return_latents=True, 
+                                   z_plus_latent=z_plus_latent, return_z_plus_latent=return_z_plus_latent, resize=False)  
+        img_rec = torch.clamp(img_rec.detach(), -1, 1)
+        viz += [img_rec]
+
+        stylename = list(exstyles.keys())[args.style_id]
+        latent = torch.tensor(exstyles[stylename]).to(device)
+        if args.preserve_color and not args.wplus:
+            latent[:,7:18] = instyle[:,7:18]
+        # extrinsic styte code
+        exstyle = generator.generator.style(latent.reshape(latent.shape[0]*latent.shape[1], latent.shape[2])).reshape(latent.shape)
+        if args.preserve_color and args.wplus:
+            exstyle[:,7:18] = instyle[:,7:18]
+            
+        # load style image if it exists
+        S = None
+        if os.path.exists(os.path.join(args.data_path, args.style, 'images/train', stylename)):
+            S = load_image(os.path.join(args.data_path, args.style, 'images/train', stylename)).to(device)
+            viz += [S]
+
+        # style transfer 
+        # input_is_latent: instyle is not in W space
+        # z_plus_latent: instyle is in Z+ space
+        # use_res: use extrinsic style path, or the style is not transferred
+        # interp_weights: weight vector for style combination of two paths
+        img_gen, _ = generator([instyle], exstyle, input_is_latent=input_is_latent, z_plus_latent=z_plus_latent,
+                              truncation=args.truncation, truncation_latent=0, use_res=True, interp_weights=args.weight)
+        img_gen = torch.clamp(img_gen.detach(), -1, 1)
+        viz += [img_gen]
+
+    print('Generate images successfully!')
+    
+    # 첫 번째 생성된 이미지 텐서를 PIL 이미지로 변환합니다.
+    to_pil = ToPILImage()
+    img_gen_pil = to_pil(img_gen[0].cpu())
+    print('return images successfully!')
+    return img_gen_pil
+
+
