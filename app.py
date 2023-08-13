@@ -7,6 +7,7 @@ from flask import Flask, request, redirect, render_template, send_from_directory
 from werkzeug.utils import secure_filename
 from cartoonize import cartoonize
 from flask_cors import CORS
+import numpy as np
 
 app = Flask(__name__)
 CORS(app)  # CORS를 사용하도록 설정합니다.
