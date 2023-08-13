@@ -3,7 +3,7 @@ import base64
 import io
 from io import BytesIO
 from PIL import Image
-from flask import Flask, request, redirect, render_template, send_from_directory, jsonify
+from flask import Flask, request, redirect, render_template, send_from_directory,  jsonify, url_for, make_response
 from werkzeug.utils import secure_filename
 from cartoonize import cartoonize
 from flask_cors import CORS
