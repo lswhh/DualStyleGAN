@@ -342,10 +342,10 @@ def cartoonize(content_image):
 
     print('Generate images successfully!')
     
-    # 첫 번째 생성된 이미지 텐서를 PIL 이미지로 변환합니다.
-    to_pil = ToPILImage()
-    img_gen_pil = to_pil(img_gen[0].cpu())
+    # # 첫 번째 생성된 이미지 텐서를 PIL 이미지로 변환합니다.
+    # to_pil = ToPILImage()
+    # img_gen_pil = to_pil(img_gen[0].cpu())
     print('return images successfully!')
-    return img_gen_pil
+    return img_gen[0].cpu()
 
 

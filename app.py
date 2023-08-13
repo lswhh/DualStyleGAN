@@ -35,10 +35,15 @@ def handle_photo2cartoon():
     try:
         image = request.files["image"]
 
-        cartoonized_img_pil = cartoonize(image)
+        cartoonized_img_tensor = cartoonize(image)
+
+        img_np = (np.clip(cartoonized_img_tensor.numpy(), -1, 1) * 127.5 + 127.5).astype(np.uint8) # Normalize image values to [0, 255]
+        img_np = np.transpose(img_np, (1, 2, 0)) # Rearrange tensor dimensions to (height, width, channels)
 
         img_byte_arr = io.BytesIO()
-        cartoonized_img_pil.save(img_byte_arr, format="JPEG")
+        im = Image.fromarray(img_np)
+        im.save(img_byte_arr, format="JPEG")
+
         img_byte_arr.seek(0)
         response = make_response(img_byte_arr.getvalue())
         response.headers.set('Content-Type', 'image/jpeg')  # 이미지 포맷에 맞게 변경
