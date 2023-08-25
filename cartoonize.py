@@ -1,4 +1,5 @@
 import os
+import random
 import numpy as np
 import torch
 from util import save_image, load_image
@@ -19,7 +20,7 @@ class TestOptions():
     def __init__(self):
 
         self.parser = argparse.ArgumentParser(description="Exemplar-Based Style Transfer")
-        self.parser.add_argument("--content", type=str, default='./data/content/081680.jpg', help="path of the content image")
+        self.parser.add_argument("--content", type=str, default='data/content/081680.jpgxx', help="path of the content image")
         #self.parser.add_argument("--style", type=str, default='cartoon', help="target style type")
         self.parser.add_argument("--style", type=str, default='pixar', help="target style type")
         self.parser.add_argument("--style_id", type=int, default=53, help="the id of the style image")
@@ -48,6 +49,34 @@ class TestOptions():
             print('%s: %s' % (str(name), str(value)))
         return self.opt
     
+class myTestOption():
+    def __init__(self, content='./data/content/081680.jpg', align_face=False, preserve_color=False,
+                 style='pixar', name='pixar_transfer', style_id=53,
+                 weight=[0]*4+[0.75]*3+[1]*11,
+                 wplus=None):
+        self.opt = Namespace()
+        self.opt.content = content
+        self.opt.align_face = align_face
+        self.opt.preserve_color = preserve_color
+        self.opt.style = style
+        self.opt.name = name
+        self.opt.style_id = style_id
+        self.opt.weight = weight
+        self.opt.model_path='./checkpoint/'
+        self.opt.model_name='generator.pt'
+        self.opt.data_path='./data/'
+        self.opt.exstyle_name=None
+        self.opt.truncation=0.75
+        self.opt.wplus=wplus
+        if os.path.exists(os.path.join(self.opt.model_path, self.opt.style, 'refined_exstyle_code.npy')):
+            self.opt.exstyle_name = 'refined_exstyle_code.npy'
+        else:
+            self.opt.exstyle_name = 'exstyle_code.npy'        
+
+    def parse(self):
+      return self.opt
+
+
 def run_alignment(args):
     import dlib
     from model.encoder.align_all_parallel import align_face
@@ -256,9 +285,24 @@ def cartoonizePIL(content_image):
 
 
 def cartoonize(content_image):
+    content_image = Image.open(content_image.stream)
+    if content_image.mode == 'RGBA':
+        content_image = content_image.convert('RGB')
     device = "cpu"
 
-    parser = TestOptions()
+    #parser = TestOptions()
+    #args = parser.parse()
+    # Then in your cartoonize function:
+    # style_id는 0부터 173까지의 정수 중 하나를 랜덤으로 선택합니다.
+    random_style_id = random.randint(0, 173)
+
+    # weight는 0.75부터 1까지의 실수 중 하나를 랜덤으로 선택하여, 이를 18번 반복하여 리스트를 생성합니다.
+    random_weight = [round(random.uniform(0.75, 1),2) for _ in range(18)]
+    parser = myTestOption(align_face=False,
+                     preserve_color=True, style='anime', name='anime_transfer',
+                     style_id=random_style_id,
+                     weight=random_weight,
+                     wplus=None)
     args = parser.parse()
     print('*'*98)
     
@@ -301,12 +345,13 @@ def cartoonize(content_image):
         viz = []
         # load content image
         if args.align_face:
-            I = transform(run_alignment(args)).unsqueeze(dim=0).to(device)
+            #I = transform(run_alignment(args)).unsqueeze(dim=0).to(device)
+            I = transform(content_image).unsqueeze(dim=0).to(device)
             I = F.adaptive_avg_pool2d(I, 1024)
         else:
-            I = load_image(args.content).to(device)
-            # I = transformf(content_image).to(device).unsqueeze(dim=0)
-            # I = transform(content_image).unsqueeze(dim=0).to(device)
+            # I = load_image(args.content).to(device)
+            #I = transform(content_image).to(device).unsqueeze(dim=0)
+            I = transform(content_image).unsqueeze(dim=0).to(device)
         viz += [I]
 
         # reconstructed content image and its intrinsic style code

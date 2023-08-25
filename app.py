@@ -8,6 +8,7 @@ from werkzeug.utils import secure_filename
 from cartoonize import cartoonize, cartoonizePIL
 from flask_cors import CORS
 import numpy as np
+import traceback
 
 app = Flask(__name__)
 CORS(app)  # CORS를 사용하도록 설정합니다.
@@ -51,6 +52,7 @@ def handle_photo2cartoon():
 
         return response
     except Exception as e:
+        traceback.print_exc()
         print("Exception occurred:", e)  # 추가
         error_message = str(e).replace('<', '&lt;').replace('>', '&gt;')
         return error_message, 400
