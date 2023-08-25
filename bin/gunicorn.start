@@ -1,0 +1,1 @@
+/home/eddy_lee/venv/bin/gunicorn app:app --bind 0.0.0.0:5000 --workers 2 --access-logfile access.log --error-logfile error.log --capture-output --log-level info --daemon
